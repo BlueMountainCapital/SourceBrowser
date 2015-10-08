@@ -12,6 +12,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
 {
     public partial class SolutionFinalizer
     {
+        public readonly static string VERSION_KEY = "ver";
         public string SolutionDestinationFolder;
         public IEnumerable<ProjectFinalizer> projects;
         public readonly Dictionary<string, ProjectFinalizer> assemblyNameToProjectMap = new Dictionary<string, ProjectFinalizer>();
@@ -107,7 +108,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
 
             var hdr = Path.Combine(solutionDestinationFolder, "header.html");
             string v = string.Empty;
-            extraArgs.TryGetValue("ver", out v);
+            extraArgs.TryGetValue(VERSION_KEY, out v);
             string txt = File.ReadAllText(hdr);            
             txt = txt.Replace("@VersionDisplayText@", v);
             File.WriteAllText(hdr, txt);

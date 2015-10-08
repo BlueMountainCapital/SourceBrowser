@@ -86,7 +86,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             using (Disposable.Timing("Generating website"))
             {
                 IndexSolutions(projects);
-                FinalizeProjects(new Dictionary<string, string> { { "ver" , versionDisplayText} });
+                FinalizeProjects(new Dictionary<string, string> { { SolutionFinalizer.VERSION_KEY , versionDisplayText} });
             }
         }
 
