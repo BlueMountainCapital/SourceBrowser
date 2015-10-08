@@ -87,7 +87,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
         }
 
-        public void FinalizeProjects(Folder<Project> solutionExplorerRoot = null)
+        public void FinalizeProjects(Folder<Project> solutionExplorerRoot = null, IDictionary<string, string> extraArgs = null)
         {
             SortProcessedAssemblies();
             WriteSolutionExplorer(solutionExplorerRoot);
@@ -98,6 +98,19 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             WriteAggregateStats();
             DeployFilesToRoot(SolutionDestinationFolder);
             Markup.GenerateResultsHtml(SolutionDestinationFolder);
+            PostProcessHtml(SolutionDestinationFolder, extraArgs);
+        }
+
+        private void PostProcessHtml(string solutionDestinationFolder, IDictionary<string, string> extraArgs)
+        {
+            if (extraArgs == null) return;
+
+            var hdr = Path.Combine(solutionDestinationFolder, "header.html");
+            string v = string.Empty;
+            extraArgs.TryGetValue("ver", out v);
+            string txt = File.ReadAllText(hdr);            
+            txt = txt.Replace("@VersionDisplayText@", v);
+            File.WriteAllText(hdr, txt);
         }
 
         public static void SortProcessedAssemblies()

@@ -15,10 +15,15 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 PrintUsage();
                 return;
             }
-
+            var versionDisplayText = string.Empty;
             var projects = new List<string>();
             foreach (var arg in args)
             {
+                if(arg.StartsWith("/ver:"))
+                {
+                    versionDisplayText = arg.Substring("/ver:".Length).StripQuotes().Trim();
+                    continue;
+                }
                 if (arg.StartsWith("/out:"))
                 {
                     Paths.SolutionDestinationFolder = arg.Substring("/out:".Length).StripQuotes();
@@ -81,7 +86,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             using (Disposable.Timing("Generating website"))
             {
                 IndexSolutions(projects);
-                FinalizeProjects();
+                FinalizeProjects(new Dictionary<string, string> { { "ver" , versionDisplayText} });
             }
         }
 
@@ -108,7 +113,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
 
         private static void PrintUsage()
         {
-            Console.WriteLine(@"Usage: HtmlGenerator [/out:<outputdirectory>] <pathtosolution1.csproj|vbproj|sln> [more solutions/projects..] [/in:<filecontaingprojectlist>]");
+            Console.WriteLine(@"Usage: HtmlGenerator [/ver:<version string>] [/out:<outputdirectory>] <pathtosolution1.csproj|vbproj|sln> [more solutions/projects..] [/in:<filecontaingprojectlist>]");
         }
 
         private static readonly Folder<Project> mergedSolutionExplorerRoot = new Folder<Project>();
@@ -149,7 +154,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
         }
 
-        private static void FinalizeProjects()
+        private static void FinalizeProjects(IDictionary<string,string> extraArgs)
         {
             GenerateLooseFilesProject(Constants.MSBuildFiles, Paths.SolutionDestinationFolder);
             GenerateLooseFilesProject(Constants.TypeScriptFiles, Paths.SolutionDestinationFolder);
@@ -158,7 +163,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 try
                 {
                     var solutionFinalizer = new SolutionFinalizer(Paths.SolutionDestinationFolder);
-                    solutionFinalizer.FinalizeProjects(mergedSolutionExplorerRoot);
+                    solutionFinalizer.FinalizeProjects(mergedSolutionExplorerRoot, extraArgs);
                 }
                 catch (Exception ex)
                 {
