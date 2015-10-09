@@ -533,7 +533,7 @@ a i {
 }
 
 .headerBody {
-    background-color: #68217A;
+    background-color: #205081;
     margin: 0px;
     padding: 0px;
     border-width: 0px;
@@ -574,7 +574,7 @@ a i {
 }
 
 #logoText {
-    background-image: url(content/icons/microsoftlogo.png);
+    background-image: url(content/icons/bmclogo.png);
     background-repeat: no-repeat;
     background-position: 0px 22px;
     background-clip: border-box;

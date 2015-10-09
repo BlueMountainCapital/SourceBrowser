@@ -330,6 +330,7 @@
     <Content Include="content\icons\97.png" />
     <Content Include="content\icons\98.png" />
     <Content Include="content\icons\99.png" />
+    <Content Include="content\icons\bmclogo.png" />
     <Content Include="content\icons\csharp.png" />
     <Content Include="content\icons\csharpprojectexplorer.png" />
     <Content Include="content\icons\documentoutline.png" />
