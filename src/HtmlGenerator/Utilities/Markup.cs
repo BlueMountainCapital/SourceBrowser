@@ -163,7 +163,7 @@ redirectToReferences();
         private static string documentHtmlPrefixTemplate = @"<!DOCTYPE html>
 <html><head><title>{0}</title><link rel=""stylesheet"" href=""{1}styles.css""><script src=""{1}scripts.js""></script></head>
 <body class=""cB"" onload=""{3}({2});"">";
-        private static string documentTablePrefix = @"<div class=""cz""><table class=""tb"" cellpadding=""0"" cellspacing=""0""><tr><td valign=""top"" align=""right""><pre id=""ln"">{0}</pre></td><td valign=""top"" align=""left""><pre id=""code"">";
+        private static string documentTablePrefix = @"<div class=""cz""><table class=""tb"" cellpadding=""0"" cellspacing=""0""><tr>{1}<td valign=""top"" align=""right""><pre id=""ln"">{0}</pre></td><td valign=""top"" align=""left""><pre id=""code"">";
 
         public static string GetDocumentPrefix(string title, string relativePathToRoot, int lineCount, string customJSOnloadFunction = "i")
         {
@@ -173,13 +173,18 @@ redirectToReferences();
 
         public static string GetTablePrefix()
         {
-            return string.Format(documentTablePrefix, "");
+            return string.Format(documentTablePrefix, "", "");
         }
 
-        public static string GetTablePrefix(string documentUrl, int pregenerateLineNumbers)
+        public static string GetTablePrefix(string documentUrl, int pregenerateLineNumbers, string glyphHtml)
         {
             var lineNumberText = GenerateLineNumberText(pregenerateLineNumbers, documentUrl);
-            return string.Format(documentTablePrefix, lineNumberText);
+            if (!string.IsNullOrWhiteSpace(glyphHtml))
+            {
+                glyphHtml = $@"<td valign=""top"" align=""right""><pre id=""glyph"">{glyphHtml}</pre></td>";
+            }
+
+            return string.Format(documentTablePrefix, lineNumberText, glyphHtml);
         }
 
         private static string GenerateLineNumberText(int lineNumbers, string documentUrl)
@@ -189,19 +194,17 @@ redirectToReferences();
                 return string.Empty;
             }
 
-            string href = documentUrl + "#";
-            var sb = new StringBuilder();
+            Func<int, string> FormatLineLinkForDocument = i => FormatLineLink(documentUrl, i);
 
-            for (int i = 1; i <= lineNumbers; i++)
-            {
-                var lineNumber = i.ToString();
-                sb.AppendFormat(
-                    "<a id=\"{0}\" href=\"{1}\" target=\"_top\">{0}</a><br/>",
-                    lineNumber,
-                    href + lineNumber);
-            }
+            return string.Concat(Enumerable.Range(1, lineNumbers).Select(FormatLineLinkForDocument));
+        }
 
-            return sb.ToString();
+        public static string FormatLineLink(string documentUrl, int i)
+        {
+            return string.Format(
+                                "<a id=\"{0}\" href=\"{1}#{0}\" target=\"_top\">{0}</a><br/>",
+                                i,
+                                documentUrl);
         }
 
         public static string GetDocumentSuffix()
@@ -300,8 +303,28 @@ Don't use this page directly, pass #symbolId to get redirected.
         public static void GenerateResultsHtml(string solutionDestinationFolder)
         {
             var sb = new StringBuilder();
+
             sb.AppendLine(GetResultsHtmlPrefix());
-            sb.AppendLine(GetResultsHtmlSuffix());
+            sb.AppendLine(GetResultsHtmlSuffix(emitSolutionBrowserLink: false));
+
+            File.WriteAllText(Path.Combine(solutionDestinationFolder, "results.html"), sb.ToString());
+        }
+
+        public static void GenerateResultsHtmlWithAssemblyList(string solutionDestinationFolder, IEnumerable<string> assemblyList)
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine(GetResultsHtmlPrefix());
+
+            foreach (var assemblyName in assemblyList)
+            {
+                sb.AppendFormat(
+                  @"<a href=""/#{0},namespaces"" target=""_top""><div class=""resultItem""><div class=""resultLine"">{0}</div></div></a>", assemblyName);
+                sb.AppendLine();
+            }
+
+            sb.AppendLine(GetResultsHtmlSuffix(emitSolutionBrowserLink: true));
+
             File.WriteAllText(Path.Combine(solutionDestinationFolder, "results.html"), sb.ToString());
         }
 
@@ -320,9 +343,13 @@ Enter a type or member name or <a href=""/#q=assembly%20"" target=""_top"" class
 ";
         }
 
-        public static string GetResultsHtmlSuffix()
+        public static string GetResultsHtmlSuffix(bool emitSolutionBrowserLink)
         {
-            return @"</div></div></body></html>";
+            var solutionExplorerLink = emitSolutionBrowserLink
+                ? @"<div class=""note"">Try also browsing the <a href=""solutionexplorer.html"" class=""blueLink"">solution explorer</a>.</div>"
+                : null;
+
+            return @"</div></div>" + solutionExplorerLink + @"</body></html>";
         }
 
         private static string partialTypeDisambiguationFileTemplate = @"<!DOCTYPE html>

@@ -1,18 +1,49 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
-using Microsoft.SourceBrowser.HtmlGenerator.Utilities;
 
 namespace Microsoft.SourceBrowser.HtmlGenerator
 {
     public class Federation
     {
-        public static IEnumerable<string> FederatedIndexUrls = new[] { @"http://referencesource.microsoft.com", @"http://source.roslyn.io" };
+        public static IEnumerable<string> DefaultFederatedIndexUrls = new[]
+        {
+            @"https://referencesource.microsoft.com",
+            @"http://source.roslyn.io"
+        };
 
-        private List<HashSet<string>> assemblies = new List<HashSet<string>>();
+        private class Info
+        {
+            public Info(string server, HashSet<string> assemblies)
+            {
+                if (server == null)
+                {
+                    throw new ArgumentNullException(nameof(server));
+                }
 
-        public Federation() : this(FederatedIndexUrls)
+                if (assemblies == null)
+                {
+                    throw new ArgumentNullException(nameof(assemblies));
+                }
+
+                if (!server.EndsWith("/"))
+                {
+                    server += "/";
+                }
+
+                Server = server;
+                Assemblies = assemblies;
+            }
+
+            public string Server { get; }
+            public HashSet<string> Assemblies { get; }
+        }
+
+        private readonly List<Info> federations = new List<Info>();
+
+        public Federation()
         {
         }
 
@@ -22,24 +53,51 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
 
         public Federation(params string[] servers)
         {
-            if (servers == null || servers.Length == 0)
+            AddFederations(servers);
+        }
+
+        public void AddFederations(IEnumerable<string> servers)
+        {
+            if (servers == null)
             {
                 return;
             }
 
-            WebProxyAuthenticator.Authenticate(this.GetAssemblyUrl(servers[0]));
-
             foreach (var server in servers)
             {
-                var url = this.GetAssemblyUrl(server);
+                AddFederation(server);
+            }
+        }
 
-                var assemblyList = new WebClient().DownloadString(url);
-                var assemblyNames = new HashSet<string>(assemblyList
+        public void AddFederations(params string[] servers)
+        {
+            AddFederations((IEnumerable<string>)servers);
+        }
+
+        public void AddFederation(string server)
+        {
+            var url = GetAssemblyUrl(server);
+
+            var assemblyList = new WebClient().DownloadString(url);
+            var assemblyNames = GetAssemblyNames(assemblyList);
+
+            federations.Add(new Info(server, assemblyNames));
+        }
+
+        public void AddFederation(string server, string assemblyListFile)
+        {
+            var fileText = File.ReadAllText(assemblyListFile);
+            var assemblyNames = GetAssemblyNames(fileText);
+            var info = new Info(server, assemblyNames);
+            federations.Add(info);
+        }
+
+        private HashSet<string> GetAssemblyNames(string assemblyList)
+        {
+            var assemblyNames = new HashSet<string>(assemblyList
                     .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
                     .Select(line => line.Split(';')[0]), StringComparer.OrdinalIgnoreCase);
-
-                assemblies.Add(assemblyNames);
-            }
+            return assemblyNames;
         }
 
         private string GetAssemblyUrl(string server)
@@ -57,15 +115,25 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
 
         public int GetExternalAssemblyIndex(string assemblyName)
         {
-            for (int i = 0; i < assemblies.Count; i++)
+            // Order must match order in GetServers().
+            for (int i = 0; i < federations.Count; i++)
             {
-                if (assemblies[i].Contains(assemblyName))
+                if (federations[i].Assemblies.Contains(assemblyName))
                 {
                     return i;
                 }
             }
 
             return -1;
+        }
+
+        public IEnumerable<string> GetServers()
+        {
+            // Order must match order in GetExternalAssemblyIndex().
+            for (int i = 0; i < federations.Count; i++)
+            {
+                yield return federations[i].Server;
+            }
         }
     }
 }

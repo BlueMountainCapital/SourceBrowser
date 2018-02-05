@@ -149,25 +149,145 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             // pass a value larger than 0 to generate line numbers in JavaScript (to reduce HTML size)
             var prefix = Markup.GetDocumentPrefix(title, relativePathToRoot, pregenerateLineNumbers ? 0 : lineCount);
             writer.Write(prefix);
-            var documentUrl = GenerateHeader(writer.WriteLine);
+            GenerateHeader(writer.WriteLine);
+
+            var ranges = (await classifier.Classify(Document, Text)).ToArray();
 
             // pass a value larger than 0 to generate line numbers statically at HTML generation time
-            var table = Markup.GetTablePrefix(documentUrl, pregenerateLineNumbers ? lineCount : 0);
+            var table = Markup.GetTablePrefix(
+                DocumentUrl,
+                pregenerateLineNumbers ? lineCount : 0,
+                GenerateGlyphs(ranges));
             writer.WriteLine(table);
 
-            await GeneratePre(writer, lineCount);
+            GeneratePre(ranges, writer, lineCount);
             var suffix = Markup.GetDocumentSuffix();
             writer.WriteLine(suffix);
         }
 
-        private string GenerateHeader(Action<string> writeLine)
+        private ISymbol GetSymbolForRange(Classification.Range r)
+        {
+            var position = r.ClassifiedSpan.TextSpan.Start;
+            var token = Root.FindToken(position, findInsideTrivia: true);
+
+            if (token != null)
+            {
+                return SemanticModel.GetDeclaredSymbol(token.Parent);
+            }
+            return null;
+        }
+
+        private string GenerateGlyphs(IEnumerable<Classification.Range> ranges)
+        {
+            if (!SolutionGenerator.LoadPlugins)
+            {
+                return "";
+            }
+
+            var lines = new Dictionary<int, HashSet<string>>();
+            int lineNumber = -1;
+            ISymbol symbol = null;
+            Dictionary<string, string> context = new Dictionary<string, string>
+            {
+                    { MEF.ContextKeys.FilePath, Document.FilePath },
+                    { MEF.ContextKeys.LineNumber, "-1" }
+            };
+
+            Action<string> maybeLog = g =>
+            {
+                if (!string.IsNullOrWhiteSpace(g))
+                {
+                    HashSet<string> lineGlyphs;
+                    if (!lines.TryGetValue(lineNumber, out lineGlyphs))
+                    {
+                        lineGlyphs = new HashSet<string>();
+                        lines.Add(lineNumber, lineGlyphs);
+                    }
+
+                    lineGlyphs.Add(g);
+                }
+            };
+
+            Func<MEF.ITextVisitor, string> VisitText = v =>
+            {
+                try
+                {
+                    return v.Visit(Text.Lines[lineNumber - 1].ToString(), context);
+                }
+                catch (Exception ex)
+                {
+                    Log.Write("Exception in text visitor: " + ex.Message);
+                    return null;
+                }
+            };
+
+            Func<MEF.ISymbolVisitor, string> VisitSymbol = v =>
+            {
+                try
+                {
+                    return symbol.Accept(new MEF.SymbolVisitorWrapper(v, context));
+                }
+                catch (Exception ex)
+                {
+                    Log.Write("Exception in symbol visitor: " + ex.Message);
+                    return null;
+                }
+            };
+
+            foreach (var r in ranges)
+            {
+                var pos = r.ClassifiedSpan.TextSpan.Start;
+                var token = Root.FindToken(pos, true);
+                var nextLineNumber = token.SyntaxTree.GetLineSpan(token.Span).StartLinePosition.Line + 1;
+
+                if (nextLineNumber != lineNumber)
+                {
+                    lineNumber = nextLineNumber;
+                    context[MEF.ContextKeys.LineNumber] = lineNumber.ToString();
+                    maybeLog(string.Concat(projectGenerator.PluginTextVisitors.Select(VisitText)));
+                }
+
+                symbol = SemanticModel.GetDeclaredSymbol(token.Parent);
+                if (symbol != null)
+                {
+                    maybeLog(string.Concat(projectGenerator.PluginSymbolVisitors.Select(VisitSymbol)));
+                }
+            }
+
+            if (lines.Any())
+            {
+                var sb = new StringBuilder();
+                for (var i = 1; i <= lines.Keys.Max(); i++)
+                {
+                    HashSet<string> glyphs;
+                    if (lines.TryGetValue(i, out glyphs))
+                    {
+                        foreach (var g in glyphs)
+                        {
+                            sb.Append(g);
+                        }
+                    }
+
+                    sb.Append("<br/>");
+                }
+
+                return sb.ToString();
+            }
+            else
+            {
+                return string.Empty;
+            }
+        }
+
+        private string DocumentUrl { get { return Document.Project.AssemblyName + "/" + documentRelativeFilePathWithoutHtmlExtension.Replace('\\', '/'); } }
+
+        private void GenerateHeader(Action<string> writeLine)
         {
             string documentDisplayName = documentRelativeFilePathWithoutHtmlExtension;
-            string documentUrl = "/#" + Document.Project.AssemblyName + "/" + documentRelativeFilePathWithoutHtmlExtension.Replace('\\', '/');
             string projectDisplayName = projectGenerator.ProjectSourcePath;
             string projectUrl = "/#" + Document.Project.AssemblyName;
 
-            string documentLink = string.Format("File: <a id=\"filePath\" class=\"blueLink\" href=\"{0}\" target=\"_top\">{1}</a><br/>", documentUrl, documentDisplayName);
+            string documentLink = string.Format("File: <a id=\"filePath\" class=\"blueLink\" href=\"{0}\" target=\"_top\">{1}</a><br/>", DocumentUrl, documentDisplayName);
             string projectLink = string.Format("Project: <a id=\"projectPath\" class=\"blueLink\" href=\"{0}\" target=\"_top\">{1}</a> ({2})", projectUrl, projectDisplayName, projectGenerator.AssemblyName);
 
             string fileShareLink = GetFileShareLink();
@@ -194,12 +314,18 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             string secondRow = string.Format("<tr><td>{0}</td><td>{1}</td></tr>", projectLink, fileShareLink);
 
             Markup.WriteLinkPanel(writeLine, firstRow, secondRow);
-
-            return documentUrl;
         }
 
         private string GetWebLink()
         {
+            var fullPath = Path.GetFullPath(Document.FilePath);
+            var serverPathMapping =
+                projectGenerator.SolutionGenerator.ServerPathMappings.FirstOrDefault(p => fullPath.StartsWith(p.Key, StringComparison.OrdinalIgnoreCase));
+            if (serverPathMapping.Key != null)
+            {
+                return serverPathMapping.Value + fullPath.Substring(serverPathMapping.Key.Length).Replace('\\', '/');
+            }
+
             var serverPath = this.projectGenerator.SolutionGenerator.ServerPath;
             if (string.IsNullOrEmpty(serverPath))
             {
@@ -243,6 +369,11 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
         private async Task GeneratePre(StreamWriter writer, int lineCount = 0)
         {
             var ranges = await classifier.Classify(Document, Text);
+            GeneratePre(ranges, writer, lineCount);
+        }
+
+        private void GeneratePre(IEnumerable<Classification.Range> ranges, StreamWriter writer, int lineCount = 0)
+        {
             if (ranges == null)
             {
                 // if there was an error in Roslyn, don't fail the entire index, just return
@@ -266,8 +397,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             var html = range.Text;
             html = Markup.HtmlEscape(html);
             bool isLargeFile = IsLargeFile(lineCount);
-
-            string classAttributeValue = classifier.GetSpanClass(html, range.ClassificationType);
+            string classAttributeValue = GetClassAttribute(html, range);
             HtmlElementInfo hyperlinkInfo = GenerateLinks(range, isLargeFile);
 
             if (hyperlinkInfo == null)
@@ -281,6 +411,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 {
                     return "<b>" + html + "</b>";
                 }
+
             }
 
             var sb = new StringBuilder();

@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.SourceBrowser.Common;
@@ -88,7 +90,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
         }
 
-        public void FinalizeProjects(Folder<Project> solutionExplorerRoot = null, IDictionary<string, string> extraArgs = null)
+        public void FinalizeProjects(bool emitAssemblyList, Federation federation, Folder<Project> solutionExplorerRoot = null)
         {
             SortProcessedAssemblies();
             WriteSolutionExplorer(solutionExplorerRoot);
@@ -97,21 +99,54 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             CreateProjectMap();
             CreateReferencingProjectLists();
             WriteAggregateStats();
-            DeployFilesToRoot(SolutionDestinationFolder);
-            Markup.GenerateResultsHtml(SolutionDestinationFolder);
-            PostProcessHtml(SolutionDestinationFolder, extraArgs);
+            DeployFilesToRoot(SolutionDestinationFolder, emitAssemblyList, federation);
+
+            if (emitAssemblyList)
+            {
+                var assemblyNames = projects
+                    .Where(projectFinalizer => projectFinalizer.ProjectInfoLine != null)
+                    .Select(projectFinalizer => projectFinalizer.AssemblyId).ToList();
+
+                var sorter = GetCustomRootSorter();
+                assemblyNames.Sort(sorter);
+
+                Markup.GenerateResultsHtmlWithAssemblyList(SolutionDestinationFolder, assemblyNames);
+            }
+            else
+            {
+                Markup.GenerateResultsHtml(SolutionDestinationFolder);
+            }
         }
 
-        private void PostProcessHtml(string solutionDestinationFolder, IDictionary<string, string> extraArgs)
+        private Comparison<string> GetCustomRootSorter()
         {
-            if (extraArgs == null) return;
+            var file = Path.Combine(
+                Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),
+                "AssemblySortOrder.txt");
+            if (!File.Exists(file))
+            {
+                return (l, r) => StringComparer.OrdinalIgnoreCase.Compare(l, r);
+            }
 
-            var hdr = Path.Combine(solutionDestinationFolder, "header.html");
-            string v = string.Empty;
-            extraArgs.TryGetValue(VERSION_KEY, out v);
-            string txt = File.ReadAllText(hdr);            
-            txt = txt.Replace("@VersionDisplayText@", v);
-            File.WriteAllText(hdr, txt);
+            var lines = File
+                .ReadAllLines(file)
+                .Select((assemblyName, index) => new KeyValuePair<string, int>(assemblyName, index + 1))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+            return (l, r) =>
+            {
+                int index1, index2;
+                lines.TryGetValue(l, out index1);
+                lines.TryGetValue(r, out index2);
+                if (index1 == 0 || index2 == 0)
+                {
+                    return l.CompareTo(r);
+                }
+                else
+                {
+                    return index1 - index2;
+                }
+            };
         }
 
         public static void SortProcessedAssemblies()
@@ -261,69 +296,12 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 });
         }
 
-        private void DeployFilesToRoot(string destinationFolder)
+        private void DeployFilesToRoot(
+            string destinationFolder,
+            bool emitAssemblyList,
+            Federation federation)
         {
             Markup.WriteReferencesNotFoundFile(destinationFolder);
-
-            string sourcePath = Assembly.GetEntryAssembly().Location;
-            sourcePath = Path.GetDirectoryName(sourcePath);
-            string basePath = sourcePath;
-            sourcePath = Path.Combine(sourcePath, @"Web");
-            if (!Directory.Exists(sourcePath))
-            {
-                return;
-            }
-
-            sourcePath = Path.GetFullPath(sourcePath);
-            FileUtilities.CopyDirectory(sourcePath, destinationFolder);
-
-            StampOverviewHtmlWithDate(destinationFolder);
-
-            DeployBin(basePath, destinationFolder);
-        }
-
-        private void StampOverviewHtmlWithDate(string destinationFolder)
-        {
-            var overviewHtml = Path.Combine(destinationFolder, "overview.html");
-            if (File.Exists(overviewHtml))
-            {
-                var text = File.ReadAllText(overviewHtml);
-                text = StampOverviewHtmlText(text);
-                File.WriteAllText(overviewHtml, text);
-            }
-        }
-
-        private string StampOverviewHtmlText(string text)
-        {
-            text = text.Replace("$(Date)", DateTime.Today.ToString("MMMM d"));
-            return text;
-        }
-
-        private void DeployBin(string sourcePath, string destinationFolder)
-        {
-            var files = new[]
-            {
-                "Microsoft.SourceBrowser.Common.dll",
-                "Microsoft.SourceBrowser.SourceIndexServer.dll",
-                "Microsoft.Web.Infrastructure.dll",
-                "Newtonsoft.Json.dll",
-                "System.Net.Http.Formatting.dll",
-                "System.Web.Helpers.dll",
-                "System.Web.Http.dll",
-                "System.Web.Http.WebHost.dll",
-                "System.Web.Mvc.dll",
-                "System.Web.Razor.dll",
-                "System.Web.WebPages.dll",
-                "System.Web.WebPages.Deployment.dll",
-                "System.Web.WebPages.Razor.dll",
-            };
-
-            foreach (var file in files)
-            {
-                FileUtilities.CopyFile(
-                    Path.Combine(sourcePath, file),
-                    Path.Combine(destinationFolder, "bin", file));
-            }
         }
 
         public void CreateProjectMap(string outputPath = null)

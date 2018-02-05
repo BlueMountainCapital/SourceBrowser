@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net46</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="LibGit2Sharp" Version="0.23.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MEF\MEF.csproj" />
+  </ItemGroup>
+</Project>

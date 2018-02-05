@@ -17,9 +17,12 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
         public string SolutionDestinationFolder { get; private set; }
         public string ProjectFilePath { get; private set; }
         public string ServerPath { get; set; }
+        public IReadOnlyDictionary<string, string> ServerPathMappings { get; }
         public string NetworkShare { get; private set; }
         private Federation Federation { get; set; }
+        public IEnumerable<string> PluginBlacklist { get; private set; }
         private readonly HashSet<string> typeScriptFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        public MEF.PluginAggregator PluginAggregator;
 
         /// <summary>
         /// List of all assembly names included in the index, from all solutions
@@ -34,14 +37,45 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             string solutionDestinationFolder,
             string serverPath = null,
             ImmutableDictionary<string, string> properties = null,
-            Federation federation = null)
+            Federation federation = null,
+            IReadOnlyDictionary<string, string> serverPathMappings = null,
+            IEnumerable<string> pluginBlacklist = null)
         {
             this.SolutionSourceFolder = Path.GetDirectoryName(solutionFilePath);
             this.SolutionDestinationFolder = solutionDestinationFolder;
             this.ProjectFilePath = solutionFilePath;
             this.ServerPath = serverPath;
+            ServerPathMappings = serverPathMappings;
             this.solution = CreateSolution(solutionFilePath, properties);
             this.Federation = federation ?? new Federation();
+            this.PluginBlacklist = pluginBlacklist ?? Enumerable.Empty<string>();
+
+            if (LoadPlugins)
+            {
+                SetupPluginAggregator();
+            }
+        }
+
+        public static bool LoadPlugins { get; set; } = true;
+
+        private void SetupPluginAggregator()
+        {
+            var settings = System.Configuration.ConfigurationManager.AppSettings;
+            var configs = settings
+                .AllKeys
+                .Where(k => k.Contains(':'))                            //Ignore keys that don't have a colon to indicate which plugin they go to
+                .Select(k => Tuple.Create(k.Split(':'), settings[k]))   //Get the data -- split the key to get the plugin name and setting name, look up the key to get the value
+                .GroupBy(t => t.Item1[0])                               //Group the settings based on which plugin they're for
+                .ToDictionary(
+                    group => group.Key,                                 //Index the outer dictionary based on plugin
+                    group => group.ToDictionary(
+                        t => t.Item1[1],                                //Index the inner dictionary based on setting name
+                        t => t.Item2                                    //The actual value of the setting
+                    )
+                );
+            PluginAggregator = new MEF.PluginAggregator(configs, new Utilities.PluginLogger(), PluginBlacklist);
+            FirstChanceExceptionHandler.IgnoreModules(PluginAggregator.Select(p => p.PluginModule));
+            PluginAggregator.Init();
         }
 
         public SolutionGenerator(
@@ -62,6 +96,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             this.ServerPath = serverPath;
             this.NetworkShare = networkShare;
             string projectSourceFolder = Path.GetDirectoryName(projectFilePath);
+            SetupPluginAggregator();
 
             this.solution = CreateSolution(
                 commandLineArguments,
@@ -90,9 +125,11 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             // Explicitly add "CheckForSystemRuntimeDependency = true" property to correctly resolve facade references.
             // See https://github.com/dotnet/roslyn/issues/560
             propertiesOpt = propertiesOpt.Add("CheckForSystemRuntimeDependency", "true");
-            propertiesOpt = propertiesOpt.Add("VisualStudioVersion", "14.0");
+            propertiesOpt = propertiesOpt.Add("VisualStudioVersion", "15.0");
 
-            return MSBuildWorkspace.Create(properties: propertiesOpt, hostServices: WorkspaceHacks.Pack);
+            var w = MSBuildWorkspace.Create(properties: propertiesOpt, hostServices: WorkspaceHacks.Pack);
+            w.LoadMetadataForReferencedProjects = true;
+            return w;
         }
 
         private static Solution CreateSolution(
@@ -225,7 +262,8 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 {
                     var document = project.AddDocument(
                         newAssemblyAttributesDocumentName,
-                        assemblyAttributesFileText);
+                        assemblyAttributesFileText,
+                        filePath: newAssemblyAttributesDocumentName);
                     solution = document.Project.Solution;
                 }
             }
@@ -277,7 +315,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 }
             }
 
-            new TypeScriptSupport().Generate(typeScriptFiles);
+            new TypeScriptSupport().Generate(typeScriptFiles, SolutionDestinationFolder);
 
             if (currentBatch.Length > 1)
             {
@@ -287,57 +325,6 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
 
             return currentBatch.Length < projectsToProcess.Length;
-        }
-
-        public void GenerateResultsHtml(IEnumerable<string> assemblyList)
-        {
-            var sb = new StringBuilder();
-            var sorter = GetCustomRootSorter();
-            var assemblyNames = assemblyList.ToList();
-            assemblyNames.Sort(sorter);
-
-            sb.AppendLine(Markup.GetResultsHtmlPrefix());
-
-            //foreach (var assemblyName in assemblyNames)
-            //{
-            //    sb.AppendFormat(@"<a href=""/#{0},namespaces"" target=""_top""><div class=""resultItem""><div class=""resultLine"">{0}</div></div></a>", assemblyName);
-            //    sb.AppendLine();
-            //}
-
-            sb.AppendLine(Markup.GetResultsHtmlSuffix());
-
-            File.WriteAllText(Path.Combine(SolutionDestinationFolder, "results.html"), sb.ToString());
-        }
-
-        public Comparison<string> GetCustomRootSorter()
-        {
-            var file = Path.Combine(
-                Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),
-                "AssemblySortOrder.txt");
-            if (!File.Exists(file))
-            {
-                return (l, r) => StringComparer.OrdinalIgnoreCase.Compare(l, r);
-            }
-
-            var lines = File
-                .ReadAllLines(file)
-                .Select((assemblyName, index) => new KeyValuePair<string, int>(assemblyName, index + 1))
-                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-
-            return (l, r) =>
-            {
-                int index1, index2;
-                lines.TryGetValue(l, out index1);
-                lines.TryGetValue(r, out index2);
-                if (index1 == 0 || index2 == 0)
-                {
-                    return l.CompareTo(r);
-                }
-                else
-                {
-                    return index1 - index2;
-                }
-            };
         }
 
         private void SetFieldValue(object instance, string fieldName, object value)
@@ -371,7 +358,8 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 Log.Write(externalReference.Key, ConsoleColor.Magenta);
                 var solutionGenerator = new SolutionGenerator(
                     externalReference.Value,
-                    Paths.SolutionDestinationFolder);
+                    Paths.SolutionDestinationFolder,
+                    pluginBlacklist: PluginBlacklist);
                 solutionGenerator.Generate(assemblyList);
             }
         }
@@ -398,14 +386,15 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             return Federation.GetExternalAssemblyIndex(assemblyName);
         }
 
-        private Solution CreateSolution(string solutionFilePath, ImmutableDictionary<string, string> propertiesOpt = null)
+        private Solution CreateSolution(string solutionFilePath, ImmutableDictionary<string, string> properties = null)
         {
             try
             {
                 Solution solution = null;
                 if (solutionFilePath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))
                 {
-                    var workspace = CreateWorkspace(propertiesOpt);
+                    properties = AddSolutionProperties(properties, solutionFilePath);
+                    var workspace = CreateWorkspace(properties);
                     workspace.SkipUnrecognizedProjects = true;
                     workspace.WorkspaceFailed += WorkspaceFailed;
                     solution = workspace.OpenSolutionAsync(solutionFilePath).GetAwaiter().GetResult();
@@ -415,7 +404,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                     solutionFilePath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
                     solutionFilePath.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase))
                 {
-                    var workspace = CreateWorkspace(propertiesOpt);
+                    var workspace = CreateWorkspace(properties);
                     workspace.WorkspaceFailed += WorkspaceFailed;
                     solution = workspace.OpenProjectAsync(solutionFilePath).GetAwaiter().GetResult().Solution;
                     this.workspace = workspace;
@@ -445,6 +434,18 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 Log.Exception(ex, "Failed to open solution: " + solutionFilePath);
                 return null;
             }
+        }
+
+        private ImmutableDictionary<string, string> AddSolutionProperties(ImmutableDictionary<string, string> properties, string solutionFilePath)
+        {
+            // http://referencesource.microsoft.com/#MSBuildFiles/C/ProgramFiles(x86)/MSBuild/14.0/bin_/amd64/Microsoft.Common.CurrentVersion.targets,296
+            properties = properties ?? ImmutableDictionary<string, string>.Empty;
+            properties = properties.Add("SolutionName", Path.GetFileNameWithoutExtension(solutionFilePath));
+            properties = properties.Add("SolutionFileName", Path.GetFileName(solutionFilePath));
+            properties = properties.Add("SolutionPath", solutionFilePath);
+            properties = properties.Add("SolutionDir", Path.GetDirectoryName(solutionFilePath));
+            properties = properties.Add("SolutionExt", Path.GetExtension(solutionFilePath));
+            return properties;
         }
 
         private static void WorkspaceFailed(object sender, WorkspaceDiagnosticEventArgs e)

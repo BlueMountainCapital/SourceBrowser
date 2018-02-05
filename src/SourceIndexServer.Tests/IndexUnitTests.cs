@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using Microsoft.SourceBrowser.Common;
 using Microsoft.SourceBrowser.SourceIndexServer;
 using Microsoft.SourceBrowser.SourceIndexServer.Models;
@@ -154,9 +156,10 @@ namespace Microsoft.SourceBrowser.HtmlGenerator.Tests
                 @"<div class=""note"">No results found</div>
 <p>Try also searching on:</p>
 <ul>
-<li><a href=""http://www.bing.com/search?q=%7bab%7d"" target=""_blank"">http://www.bing.com/search?q=%7bab%7d</a></li>
-<li><a href=""http://social.msdn.microsoft.com/Search/en-US?query=%7bab%7d"" target=""_blank"">http://social.msdn.microsoft.com/Search/en-US?query=%7bab%7d</a></li>
 <li><a href=""http://stackoverflow.com/search?q=%7bab%7d"" target=""_blank"">http://stackoverflow.com/search?q=%7bab%7d</a></li>
+<li><a href=""http://social.msdn.microsoft.com/Search/en-US?query=%7bab%7d"" target=""_blank"">http://social.msdn.microsoft.com/Search/en-US?query=%7bab%7d</a></li>
+<li><a href=""https://www.google.com/search?q=%7bab%7d"" target=""_blank"">https://www.google.com/search?q=%7bab%7d</a></li>
+<li><a href=""http://www.bing.com/search?q=%7bab%7d"" target=""_blank"">http://www.bing.com/search?q=%7bab%7d</a></li>
 </ul>
 ");
         }
@@ -190,6 +193,11 @@ namespace Microsoft.SourceBrowser.HtmlGenerator.Tests
                 var actualResults = resultSymbols.Select(i => i.Description);
                 Assert.IsTrue(actualResults.SequenceEqual(expectedResults));
             }
+        }
+
+        static IndexUnitTests()
+        {
+            Index.SetRootPath(Path.GetDirectoryName(typeof(IndexUnitTests).GetTypeInfo().Assembly.Location)); 
         }
 
         public void EndToEnd(string queryString, string expectedHtml)

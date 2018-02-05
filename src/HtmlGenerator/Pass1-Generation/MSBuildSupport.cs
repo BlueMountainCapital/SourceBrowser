@@ -26,7 +26,10 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             var url = localFileSystemPath + ".html";
             url = url.Replace(":", "");
             url = url.Replace(" ", "");
+
+            // need these because IIS refuses to render static files that have \bin\ in the path
             url = url.Replace(@"\bin\", @"\bin_\");
+            url = url.Replace(@"\Bin\", @"\Bin_\");
             if (url.StartsWith(@"\\"))
             {
                 url = url.Substring(2);
@@ -552,7 +555,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             int lengthSoFar = 0;
             foreach (var part in parts)
             {
-                if (part.StartsWith("$(") && part.EndsWith(")"))
+                if (part.StartsWith("$(") && part.EndsWith(")") && part.Length > 3)
                 {
                     var propertyName = part.Substring(2, part.Length - 3);
                     string suffix = "";
@@ -580,7 +583,8 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 else if (
                     part.StartsWith("@(") &&
                     (part.EndsWith(")") || part.EndsWith("-") || part.EndsWith(",")) &&
-                    !part.Contains("%"))
+                    !part.Contains("%") &&
+                    part.Length > 3)
                 {
                     int suffixLength = 1;
                     var itemName = part.Substring(2, part.Length - 2 - suffixLength);
