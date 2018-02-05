@@ -6,7 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="LibGit2Sharp" Version="0.23.1" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.5.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="1.1.11" />
     <PackageReference Include="MSTest.TestFramework" Version="1.1.11" />
     <PackageReference Include="System.IO.FileSystem" Version="4.3.0" />
