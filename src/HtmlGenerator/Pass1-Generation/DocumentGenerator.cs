@@ -279,7 +279,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
         }
 
-        private string DocumentUrl { get { return "https://nyswarm02.bcna.corp/files/BMC/main/src/" + Document.Project.AssemblyName + "/" + documentRelativeFilePathWithoutHtmlExtension.Replace('\\', '/'); } }
+        private string DocumentUrl { get { return Document.Project.AssemblyName + "/" + documentRelativeFilePathWithoutHtmlExtension.Replace('\\', '/'); } }
 
         private void GenerateHeader(Action<string> writeLine)
         {
