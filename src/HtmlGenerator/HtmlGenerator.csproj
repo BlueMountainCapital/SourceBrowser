@@ -28,11 +28,11 @@
   <ItemGroup>
     <PackageReference Include="ExceptionAnalysis.Diagnostics" Version="1.0.0.39796" />
     <PackageReference Include="ManagedEsent" Version="1.9.4" />
-    <PackageReference Include="Microsoft.Build" Version="15.7.179" ExcludeAssets="runtime" />
-    <PackageReference Include="Microsoft.Build.Framework" Version="15.7.179" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build" Version="15.8.166" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="15.8.166" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.Build.Locator" Version="1.0.18" />
-    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="15.7.179" ExcludeAssets="runtime" />
-    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="15.7.179" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="15.8.166" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="15.8.166" ExcludeAssets="runtime" />
     <!-- Temporarily use latest beta Roslyn packages until 2.9.0 is released on https://nuget.org. -->
     <PackageReference Include="Microsoft.CodeAnalysis" Version="2.9.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="2.6.2-beta1" />
