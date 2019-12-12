@@ -1,8 +1,7 @@
 ﻿using System;
 using System.IO;
-using Microsoft.CodeAnalysis;
 using Microsoft.SourceBrowser.Common;
-using Folder = Microsoft.SourceBrowser.HtmlGenerator.Folder<Microsoft.CodeAnalysis.Project>;
+using Folder = Microsoft.SourceBrowser.HtmlGenerator.Folder<Microsoft.SourceBrowser.HtmlGenerator.ProjectSkeleton>;
 
 namespace Microsoft.SourceBrowser.HtmlGenerator
 {
@@ -26,7 +25,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
         }
 
-        private void Sort(Folder<Project> root, Comparison<string> customRootSorter = null)
+        private void Sort(Folder<ProjectSkeleton> root, Comparison<string> customRootSorter = null)
         {
             if (Configuration.FlattenSolutionExplorer)
             {
@@ -82,12 +81,12 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
 
             var text = File.ReadAllText(fileName);
-            var startText = "<div id=\"rootFolder\"";
+            const string startText = "<div id=\"rootFolder\"";
             var start = text.IndexOf(startText) + startText.Length;
             var end = text.IndexOf("<script>");
             text = text.Substring(start, end - start);
             text = "<div" + text;
-            text = text.Replace(@"</div><div>", string.Format("</div><div class=\"folder\" data-assembly=\"{0}\">", assemblyName));
+            text = text.Replace("</div><div>", string.Format("</div><div class=\"folder\" data-assembly=\"{0}\">", assemblyName));
             text = text.Replace("projectCS", "projectCSInSolution");
             text = text.Replace("projectVB", "projectVBInSolution");
 

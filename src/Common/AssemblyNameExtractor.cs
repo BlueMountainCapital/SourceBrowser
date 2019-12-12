@@ -57,13 +57,12 @@ namespace Microsoft.SourceBrowser.Common
 
             // if regexes didn't work, try reading the XML ourselves
             var doc = XDocument.Load(projectFilePath);
-            var ns = @"http://schemas.microsoft.com/developer/msbuild/2003";
+            const string ns = "http://schemas.microsoft.com/developer/msbuild/2003";
             var propertyGroups = doc.Descendants(XName.Get("PropertyGroup", ns));
             var assemblyNameElement = propertyGroups.SelectMany(g => g.Elements(XName.Get("AssemblyName", ns))).LastOrDefault();
             if (assemblyNameElement != null && !assemblyNameElement.Value.Contains("$"))
             {
-                assemblyName = assemblyNameElement.Value;
-                return assemblyName;
+                return assemblyNameElement.Value;
             }
 
             var projectFileName = Path.GetFileNameWithoutExtension(projectFilePath);
@@ -74,10 +73,10 @@ namespace Microsoft.SourceBrowser.Common
                 {
                     var project = ProjectCollection.GlobalProjectCollection.LoadProject(
                         projectFilePath,
-                        toolsVersion: "15.0");
+                        toolsVersion: null);
 
                     assemblyName = project.GetPropertyValue("AssemblyName");
-                    if (assemblyName == "")
+                    if (assemblyName?.Length == 0)
                     {
                         assemblyName = projectFileName;
                     }
@@ -86,6 +85,9 @@ namespace Microsoft.SourceBrowser.Common
                     {
                         return assemblyName;
                     }
+                }
+                catch
+                {
                 }
                 finally
                 {

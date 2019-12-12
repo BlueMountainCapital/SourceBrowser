@@ -43,8 +43,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                     {
                         foreach (var reference in project.ReferencedAssemblies)
                         {
-                            ProjectFinalizer referencedProject = null;
-                            if (assemblyNameToProjectMap.TryGetValue(reference, out referencedProject))
+                            if (assemblyNameToProjectMap.TryGetValue(reference, out ProjectFinalizer referencedProject))
                             {
                                 referencedProject.ReferencingAssemblies.Add(project.AssemblyId);
                             }
@@ -90,7 +89,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             }
         }
 
-        public void FinalizeProjects(bool emitAssemblyList, Federation federation, Folder<Project> solutionExplorerRoot = null)
+        public void FinalizeProjects(bool emitAssemblyList, Federation federation, Folder<ProjectSkeleton> solutionExplorerRoot = null)
         {
             SortProcessedAssemblies();
             WriteSolutionExplorer(solutionExplorerRoot);
@@ -135,9 +134,8 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
 
             return (l, r) =>
             {
-                int index1, index2;
-                lines.TryGetValue(l, out index1);
-                lines.TryGetValue(r, out index2);
+                lines.TryGetValue(l, out int index1);
+                lines.TryGetValue(r, out int index2);
                 if (index1 == 0 || index2 == 0)
                 {
                     return l.CompareTo(r);
@@ -267,13 +265,13 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
                 totalPublicTypeCount += project.PublicTypeCount;
             }
 
-            sb.AppendLine("ProjectCount=" + totalProjects.WithThousandSeparators());
-            sb.AppendLine("DocumentCount=" + totalDocumentCount.WithThousandSeparators());
-            sb.AppendLine("LinesOfCode=" + totalLinesOfCode.WithThousandSeparators());
-            sb.AppendLine("BytesOfCode=" + totalBytesOfCode.WithThousandSeparators());
-            sb.AppendLine("DeclaredSymbols=" + totalDeclaredSymbolCount.WithThousandSeparators());
-            sb.AppendLine("DeclaredTypes=" + totalDeclaredTypeCount.WithThousandSeparators());
-            sb.AppendLine("PublicTypes=" + totalPublicTypeCount.WithThousandSeparators());
+            sb.Append("ProjectCount=").AppendLine(totalProjects.WithThousandSeparators());
+            sb.Append("DocumentCount=").AppendLine(totalDocumentCount.WithThousandSeparators());
+            sb.Append("LinesOfCode=").AppendLine(totalLinesOfCode.WithThousandSeparators());
+            sb.Append("BytesOfCode=").AppendLine(totalBytesOfCode.WithThousandSeparators());
+            sb.Append("DeclaredSymbols=").AppendLine(totalDeclaredSymbolCount.WithThousandSeparators());
+            sb.Append("DeclaredTypes=").AppendLine(totalDeclaredTypeCount.WithThousandSeparators());
+            sb.Append("PublicTypes=").AppendLine(totalPublicTypeCount.WithThousandSeparators());
 
             File.WriteAllText(masterIndexFile, sb.ToString(), Encoding.UTF8);
         }
@@ -309,7 +307,7 @@ namespace Microsoft.SourceBrowser.HtmlGenerator
             var projects = this.projects
                 // can't exclude assemblies without project because symbols rely on assembly index
                 // and they just take the index from this.projects (see below)
-                //.Where(p => p.ProjectInfoLine != null) 
+                //.Where(p => p.ProjectInfoLine != null)
                 .ToArray();
             Serialization.WriteProjectMap(
                 outputPath ?? SolutionDestinationFolder,
